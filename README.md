@@ -1,4 +1,15 @@
-# VoxLead AI – Autonomous AI Sales Voice Agent
+<div align="center">
+
+### 🚀 Experience VoxLead AI Live
+
+**Try the Autonomous AI Sales Voice Agent**
+
+<a href="https://voxlead-ai-bot.onrender.com/" target="_blank">
+  <img src="https://img.shields.io/badge/🚀_Live_Demo-Launch_Now-00C853?style=for-the-badge&logo=render&logoColor=white" alt="Live Demo"/>
+</a>
+
+</div>
+
 
 VoxLead AI is a beginner-friendly MERN stack MVP of an autonomous AI sales voice agent. It speaks with potential customers using browser voice APIs, answers product and pricing questions from uploaded company documents using **Moderate embedding-based RAG**, remembers active call context in **Redis**, qualifies leads into **Hot / Warm / Cold** in **MongoDB**, books demo appointments, and processes call summaries and sentiment asynchronously with **BullMQ**.
 
