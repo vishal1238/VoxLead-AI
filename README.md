@@ -22,7 +22,7 @@ VoxLead AI is a beginner-friendly MERN stack MVP of an autonomous AI sales voice
 **How VoxLead AI Solves It:**
 1. **Customer speaks** via the browser microphone (or types in the text fallback).
 2. **Express + Redis** loads the active call's conversation history.
-3. **Moderate RAG** embeds the question via Google Gemini Embeddings (`gemini-embedding-001`), runs cosine similarity against uploaded company PDF/TXT chunks in MongoDB, and retrieves the top 3 relevant chunks.
+3. **RAG** embeds the question via Google Gemini Embeddings (`gemini-embedding-001`), runs cosine similarity against uploaded company PDF/TXT chunks in MongoDB, and retrieves the top 3 relevant chunks.
 4. **Groq LLM** generates a concise, professional sales response using the retrieved company context.
 5. **Browser SpeechSynthesis** speaks the response aloud to the customer.
 6. **Lead Qualification** extracts customer details, computes a transparent JavaScript lead score (0–100), and saves the lead in MongoDB.
@@ -41,7 +41,7 @@ VoxLead AI is a beginner-friendly MERN stack MVP of an autonomous AI sales voice
   3. **Background Jobs:** Powers BullMQ queues (`call-analysis`) for async call summaries and sentiment analysis.
   4. **API Rate Limiting:** Protects `/api/ai/*` endpoints from excessive requests.
 - **Groq API:** Ultra-fast LLM inference for sales replies, lead extraction, and call summarization.
-- **Google Gemini Embeddings API:** Generates vector embeddings (`gemini-embedding-001`) for Moderate RAG.
+- **Google Gemini Embeddings API:** Generates vector embeddings (`gemini-embedding-001`) for RAG.
 
 ---
 
@@ -53,7 +53,7 @@ flowchart TD
     SR --> API["Express.js Backend"]
     API --> RL["Redis Rate Limiter"]
     RL --> RM["Redis Conversation Memory (1h TTL)"]
-    API --> RAG["Moderate RAG (HF Embedding + Cosine Similarity)"]
+    API --> RAG[" RAG (HF Embedding + Cosine Similarity)"]
     RAG --> MDB["MongoDB (Knowledge Chunks, Leads, Calls, Appointments)"]
     API --> GROQ["Groq LLM API"]
     GROQ --> API
@@ -65,7 +65,7 @@ flowchart TD
     API --> DC["Redis Dashboard Cache (60s TTL)"]
 ```
 
-### Moderate RAG Workflow
+### RAG Workflow
 
 ```mermaid
 flowchart LR
@@ -182,7 +182,7 @@ Open `http://localhost:5173` in Chrome or Edge (recommended for Web Speech API).
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/health` | Check MongoDB, Redis, Groq, and HF config status |
-| `POST` | `/api/ai/chat` | Voice/text turn (Redis memory + Moderate RAG + Groq) |
+| `POST` | `/api/ai/chat` | Voice/text turn (Redis memory + RAG + Groq) |
 | `POST` | `/api/ai/qualify-lead` | Extract lead fields, compute JS score, save to MongoDB |
 | `POST` | `/api/ai/summarize-call` | Direct call summary & sentiment |
 | `GET` | `/api/leads` | List leads (supports `?search=` and `?status=`) |
