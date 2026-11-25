@@ -35,7 +35,7 @@ export default function KnowledgeBase() {
       const doc = res.document;
       setSuccess(
         doc.embeddingStatus === 'embedded'
-          ? `Uploaded "${doc.filename}" (${doc.chunkCount} chunks embedded via Hugging Face).`
+          ? `Uploaded "${doc.filename}" (${doc.chunkCount} chunks embedded via Gemini).`
           : `Uploaded "${doc.filename}" (${doc.chunkCount} chunks saved with keyword fallback: ${doc.embeddingError}).`
       );
       setFile(null);
@@ -61,7 +61,7 @@ export default function KnowledgeBase() {
       <div>
         <h2 className="text-2xl font-bold text-white">Company Knowledge Base (Moderate RAG)</h2>
         <p className="text-sm text-slate-400">
-          Upload PDF or TXT product docs. Text is chunked, embedded via Hugging Face API, and searched with cosine similarity.
+          Upload PDF or TXT product docs. Text is chunked, embedded via Gemini Embeddings API, and searched with cosine similarity.
         </p>
       </div>
 

@@ -58,7 +58,7 @@ const knowledgeDocumentSchema = new mongoose.Schema(
     },
     embeddingModel: {
       type: String,
-      default: 'sentence-transformers/all-MiniLM-L6-v2',
+      default: 'gemini-embedding-001',
     },
     embeddingError: {
       type: String,

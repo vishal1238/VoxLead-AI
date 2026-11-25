@@ -40,9 +40,9 @@ app.get('/api/health', (req, res) => {
     groqConfigured: Boolean(
       process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== 'your_groq_api_key_here'
     ),
-    huggingfaceConfigured: Boolean(
-      process.env.HUGGINGFACE_API_KEY &&
-        process.env.HUGGINGFACE_API_KEY !== 'your_huggingface_api_key_here'
+    geminiEmbeddingsConfigured: Boolean(
+      process.env.GEMINI_API_KEY &&
+        process.env.GEMINI_API_KEY !== 'your_gemini_api_key_here'
     ),
   });
 });

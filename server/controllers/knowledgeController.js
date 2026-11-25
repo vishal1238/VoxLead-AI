@@ -1,7 +1,7 @@
 const pdfParse = require('pdf-parse');
 const KnowledgeDocument = require('../models/KnowledgeDocument');
 const { splitTextIntoChunks } = require('../utils/textChunker');
-const { generateEmbedding, DEFAULT_HF_MODEL } = require('../services/embeddingService');
+const { generateEmbedding, DEFAULT_EMBEDDING_MODEL } = require('../services/embeddingService');
 
 /**
  * POST /api/knowledge/upload
@@ -89,7 +89,7 @@ async function uploadDocument(req, res) {
       content: extractedText,
       chunks: embeddedChunks,
       embeddingStatus,
-      embeddingModel: DEFAULT_HF_MODEL,
+      embeddingModel: DEFAULT_EMBEDDING_MODEL,
       embeddingError: lastEmbeddingError,
     });
 

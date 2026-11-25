@@ -11,7 +11,7 @@ VoxLead AI is a beginner-friendly MERN stack MVP of an autonomous AI sales voice
 **How VoxLead AI Solves It:**
 1. **Customer speaks** via the browser microphone (or types in the text fallback).
 2. **Express + Redis** loads the active call's conversation history.
-3. **Moderate RAG** embeds the question via Hugging Face, runs cosine similarity against uploaded company PDF/TXT chunks in MongoDB, and retrieves the top 3 relevant chunks.
+3. **Moderate RAG** embeds the question via Google Gemini Embeddings (`gemini-embedding-001`), runs cosine similarity against uploaded company PDF/TXT chunks in MongoDB, and retrieves the top 3 relevant chunks.
 4. **Groq LLM** generates a concise, professional sales response using the retrieved company context.
 5. **Browser SpeechSynthesis** speaks the response aloud to the customer.
 6. **Lead Qualification** extracts customer details, computes a transparent JavaScript lead score (0–100), and saves the lead in MongoDB.
@@ -30,7 +30,7 @@ VoxLead AI is a beginner-friendly MERN stack MVP of an autonomous AI sales voice
   3. **Background Jobs:** Powers BullMQ queues (`call-analysis`) for async call summaries and sentiment analysis.
   4. **API Rate Limiting:** Protects `/api/ai/*` endpoints from excessive requests.
 - **Groq API:** Ultra-fast LLM inference for sales replies, lead extraction, and call summarization.
-- **Hugging Face Inference API:** Generates vector embeddings (`sentence-transformers/all-MiniLM-L6-v2`) for Moderate RAG.
+- **Google Gemini Embeddings API:** Generates vector embeddings (`gemini-embedding-001`) for Moderate RAG.
 
 ---
 
@@ -60,7 +60,7 @@ flowchart TD
 flowchart LR
     DOC["Company PDF / TXT"] --> EXT["Text Extraction (pdf-parse / utf8)"]
     EXT --> CHK["Text Chunking (~650 chars, 100 overlap)"]
-    CHK --> EMB["Hugging Face Embedding API"]
+    CHK --> EMB["Gemini Embeddings API (gemini-embedding-001)"]
     EMB --> STORE["Store Chunks + Embeddings in MongoDB"]
     Q["Customer Question"] --> QEMB["Question Embedding"]
     QEMB --> COS["Cosine Similarity Search (JS)"]
@@ -70,7 +70,7 @@ flowchart LR
     LLM --> ANS["AI Sales Response"]
 ```
 
-*(If `HUGGINGFACE_API_KEY` is missing or the embedding API fails, the system honestly falls back to keyword-overlap retrieval instead of pretending embedding retrieval succeeded.)*
+*(If `GEMINI_API_KEY` is missing or the embedding API fails, the system honestly falls back to keyword-overlap retrieval instead of pretending embedding retrieval succeeded.)*
 
 ---
 
@@ -105,7 +105,7 @@ voxlead-ai/
 │   ├── routes/                 # Express REST routes
 │   ├── services/
 │   │   ├── cacheService.js     # Redis memory & dashboard cache
-│   │   ├── embeddingService.js # Hugging Face embedding API
+│   │   ├── embeddingService.js # Gemini embedding API (gemini-embedding-001)
 │   │   ├── groqService.js      # Groq chat, lead extraction, JS scoring, summary
 │   │   └── ragService.js       # Cosine similarity + keyword fallback
 │   ├── utils/
@@ -141,7 +141,7 @@ PORT=5000
 MONGODB_URI=mongodb://127.0.0.1:27017/voxlead_ai
 REDIS_URL=redis://127.0.0.1:6379
 GROQ_API_KEY=your_groq_api_key_here
-HUGGINGFACE_API_KEY=your_huggingface_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here
 CLIENT_URL=http://localhost:5173
 ```
 
@@ -150,7 +150,7 @@ CLIENT_URL=http://localhost:5173
   - Option A (Hosted, Easiest): Create a free Redis database on [Upstash](https://upstash.com/) or [Redis Cloud](https://redis.com/try-free/) and paste the `redis://` or `rediss://` URL into `REDIS_URL`.
   - Option B (Local Windows): Install [Memurai](https://www.memurai.com/) (Redis-compatible for Windows) or run `sudo apt install redis-server && sudo service redis-server start` inside WSL2.
 - **Groq API Key:** Create a free key at [console.groq.com](https://console.groq.com).
-- **Hugging Face API Key:** Create a free Read token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+- **Gemini API Key:** Create a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) for `gemini-embedding-001`.
 
 ### Step 3: Run the Application
 ```bash
