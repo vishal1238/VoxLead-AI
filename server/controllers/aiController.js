@@ -14,6 +14,7 @@ const {
 } = require('../services/groqService');
 
 const DEMO_SLOTS = ['10:00 AM', '11:30 AM', '02:00 PM', '03:30 PM', '05:00 PM'];
+const inFlightCalls = new Set();
 
 /**
  * Helper to fetch open appointment slots for today and tomorrow
@@ -55,13 +56,23 @@ async function getUpcomingAvailableSlots() {
  * 4. Saves customer + AI messages back to Redis
  */
 async function chatWithAI(req, res) {
+  const { callId, message, language = 'en', fallbackHistory = [] } = req.body;
+
+  if (!message || !message.trim()) {
+    return res.status(400).json({ error: 'Message text is required.' });
+  }
+
+  if (callId && inFlightCalls.has(callId)) {
+    return res.status(429).json({
+      error: 'A response is already being generated for this call. Please wait.',
+    });
+  }
+
+  if (callId) {
+    inFlightCalls.add(callId);
+  }
+
   try {
-    const { callId, message, language = 'en', fallbackHistory = [] } = req.body;
-
-    if (!message || !message.trim()) {
-      return res.status(400).json({ error: 'Message text is required.' });
-    }
-
     // 1. Retrieve conversation history from Redis (or fallback to client history if Redis is down)
     let history = await getConversationHistory(callId);
     const memorySource = history !== null ? 'redis' : 'client-fallback';
@@ -105,9 +116,14 @@ async function chatWithAI(req, res) {
     });
   } catch (error) {
     console.error('[AIController] chatWithAI error:', error.message);
-    return res.status(500).json({
+    const statusCode = error.status === 429 ? 429 : 500;
+    return res.status(statusCode).json({
       error: error.message || 'Failed to generate AI response.',
     });
+  } finally {
+    if (callId) {
+      inFlightCalls.delete(callId);
+    }
   }
 }
 
@@ -164,7 +180,7 @@ async function qualifyLead(req, res) {
     return res.json({ lead });
   } catch (error) {
     console.error('[AIController] qualifyLead error:', error.message);
-    return res.status(500).json({ error: error.message || 'Failed to qualify lead.' });
+    return res.status(error.status === 429 ? 429 : 500).json({ error: error.message || 'Failed to qualify lead.' });
   }
 }
 
@@ -190,7 +206,7 @@ async function summarizeCall(req, res) {
     return res.json(analysis);
   } catch (error) {
     console.error('[AIController] summarizeCall error:', error.message);
-    return res.status(500).json({ error: error.message || 'Failed to summarize call.' });
+    return res.status(error.status === 429 ? 429 : 500).json({ error: error.message || 'Failed to summarize call.' });
   }
 }
 

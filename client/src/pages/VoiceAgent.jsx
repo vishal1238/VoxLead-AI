@@ -52,10 +52,25 @@ export default function VoiceAgent() {
 
   const recognitionRef = useRef(null);
   const transcriptEndRef = useRef(null);
+  const isSendingRef = useRef(false);
+  const activeCallIdRef = useRef('');
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      try {
+        recognitionRef.current?.abort();
+      } catch {
+        // ignore cleanup errors
+      }
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     getAppointments(bookingDate)
@@ -87,6 +102,8 @@ export default function VoiceAgent() {
       return;
     }
     const newCallId = `call_${Date.now()}`;
+    activeCallIdRef.current = newCallId;
+    isSendingRef.current = false;
     setCallId(newCallId);
     setCallActive(true);
     setCallStartTime(Date.now());
@@ -108,22 +125,28 @@ export default function VoiceAgent() {
 
   const handleSendMessage = async (rawText) => {
     const trimmed = (rawText || '').trim();
-    if (!trimmed || !callActive) return;
+    if (!trimmed || !callActive || isSendingRef.current) return;
+
+    isSendingRef.current = true;
+    const currentCallId = activeCallIdRef.current || callId;
 
     setError('');
     const customerMsg = { role: 'customer', text: trimmed, timestamp: new Date().toISOString() };
-    const updatedHistory = [...messages, customerMsg];
-    setMessages(updatedHistory);
+    const snapshotHistory = [...messages];
+    setMessages((prev) => [...prev, customerMsg]);
     setTextInput('');
     setStatus('Processing');
 
     try {
       const data = await sendAIChat({
-        callId,
+        callId: currentCallId,
         message: trimmed,
         language,
-        fallbackHistory: messages,
+        fallbackHistory: snapshotHistory,
       });
+
+      // Ignore stale response if the user ended or restarted the call while waiting
+      if (activeCallIdRef.current !== currentCallId) return;
 
       const assistantMsg = {
         role: 'assistant',
@@ -135,8 +158,14 @@ export default function VoiceAgent() {
       setMemorySource(data.memorySource || '');
       speakText(data.reply);
     } catch (err) {
+      if (activeCallIdRef.current !== currentCallId) return;
+      // Remove the failed customer message so the transcript stays clean, and restore it to input
+      setMessages((prev) => prev.filter((m) => m !== customerMsg));
+      setTextInput(trimmed);
       setStatus('Idle');
       setError(err.response?.data?.error || 'Failed to get AI response.');
+    } finally {
+      isSendingRef.current = false;
     }
   };
 
@@ -145,13 +174,22 @@ export default function VoiceAgent() {
       setError('Speech Recognition is not supported in this browser. Please use the text input below.');
       return;
     }
-    if (!callActive) return;
+    if (!callActive || isSendingRef.current || status === 'Processing') return;
+
+    try {
+      recognitionRef.current?.abort();
+    } catch {
+      // ignore
+    }
 
     window.speechSynthesis?.cancel();
     const recognition = new SpeechRecognitionAPI();
     recognition.lang = language === 'hi' ? 'hi-IN' : 'en-US';
+    recognition.continuous = false;
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
+
+    let handledResult = false;
 
     recognition.onstart = () => {
       setStatus('Listening');
@@ -159,13 +197,20 @@ export default function VoiceAgent() {
     };
 
     recognition.onresult = (event) => {
-      const spokenText = event.results[0][0].transcript;
+      if (handledResult) return;
+      const result = event.results?.[event.resultIndex || 0];
+      if (!result || !result.isFinal) return;
+      handledResult = true;
+      const spokenText = result[0]?.transcript || '';
+      recognition.stop();
       handleSendMessage(spokenText);
     };
 
     recognition.onerror = (event) => {
       setStatus('Idle');
-      setError(`Microphone error: ${event.error}. You can type your message below.`);
+      if (event.error !== 'aborted') {
+        setError(`Microphone error: ${event.error}. You can type your message below.`);
+      }
     };
 
     recognition.onend = () => {
@@ -202,8 +247,14 @@ export default function VoiceAgent() {
   };
 
   const endCall = async () => {
-    recognitionRef.current?.stop();
+    try {
+      recognitionRef.current?.abort();
+    } catch {
+      // ignore
+    }
     window.speechSynthesis?.cancel();
+    activeCallIdRef.current = '';
+    isSendingRef.current = false;
     setStatus('Processing');
     setError('');
 
@@ -330,7 +381,8 @@ export default function VoiceAgent() {
             <>
               <button
                 onClick={status === 'Listening' ? stopListening : startListening}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition cursor-pointer ${
+                disabled={status === 'Processing'}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                   status === 'Listening'
                     ? 'bg-amber-600 hover:bg-amber-500 text-white'
                     : 'bg-indigo-600 hover:bg-indigo-500 text-white'

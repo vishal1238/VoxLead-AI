@@ -1,6 +1,83 @@
 const Groq = require('groq-sdk');
 
 const DEFAULT_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
+const FALLBACK_MODELS = Array.from(
+  new Set([DEFAULT_MODEL, 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-120b'])
+);
+
+function isRateLimitError(err) {
+  const status = err?.status || err?.statusCode || err?.response?.status;
+  const msg = String(err?.message || '');
+  return status === 429 || msg.includes('429') || msg.includes('rate_limit_exceeded');
+}
+
+function isModelNotFoundError(err) {
+  const status = err?.status || err?.statusCode || err?.response?.status;
+  const msg = String(err?.message || '');
+  return status === 404 || msg.includes('404') || msg.includes('model_not_found');
+}
+
+function isToolUseFailedError(err) {
+  const status = err?.status || err?.statusCode || err?.response?.status;
+  const msg = String(err?.message || '');
+  return status === 400 && msg.includes('tool_use_failed');
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Calls Groq chat.completions.create with automatic retry & model fallback on 429/404 errors.
+ */
+async function createChatCompletionWithFallback(groq, params) {
+  let lastError = null;
+
+  for (let i = 0; i < FALLBACK_MODELS.length; i += 1) {
+    const model = FALLBACK_MODELS[i];
+    try {
+      const requestParams = {
+        ...params,
+        model,
+      };
+      // Reasoning models (gpt-oss-*) spend tokens on internal reasoning before content;
+      // keep reasoning_effort low so content is fast and never truncated.
+      if (model.startsWith('openai/gpt-oss')) {
+        requestParams.reasoning_effort = 'low';
+      }
+
+      const completion = await groq.chat.completions.create(requestParams);
+      const content = completion?.choices?.[0]?.message?.content?.trim();
+      if (!content && i < FALLBACK_MODELS.length - 1) {
+        console.warn(`[GroqService] Empty content from model ${model}, trying fallback...`);
+        continue;
+      }
+      return completion;
+    } catch (err) {
+      lastError = err;
+      if (isRateLimitError(err) || isModelNotFoundError(err) || isToolUseFailedError(err)) {
+        console.warn(`[GroqService] Error on model ${model} (${err?.status || 'unknown'}), trying fallback...`);
+        if (i < FALLBACK_MODELS.length - 1) {
+          await sleep(300);
+          continue;
+        }
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  if (isRateLimitError(lastError)) {
+    const rateErr = new Error(
+      'AI service is temporarily busy (rate limit reached). Please wait a few seconds and try again.'
+    );
+    rateErr.status = 429;
+    rateErr.cause = lastError;
+    throw rateErr;
+  }
+
+  throw lastError;
+}
 
 function getGroqClient() {
   const apiKey = process.env.GROQ_API_KEY;
@@ -34,7 +111,7 @@ async function generateSalesReply({
   const contextBlock =
     retrievedChunks.length > 0
       ? retrievedChunks
-          .map((c, idx) => `[Source ${idx + 1}: ${c.filename}]\n${c.text}`)
+          .map((c, idx) => `[Source ${idx + 1}: ${c.filename}]\n${String(c.text || '').slice(0, 500)}`)
           .join('\n\n')
       : 'No relevant company documents were found for this question.';
 
@@ -57,14 +134,15 @@ CORE RULES:
 4. Answer product, pricing, feature, and policy questions ONLY using the COMPANY KNOWLEDGE BASE below.
 5. NEVER invent product prices, features, or policies. If the knowledge base does not contain the answer, honestly say you do not have that exact detail right now and offer to connect them with a specialist or book a demo.
 6. Naturally collect customer details during the conversation: name, company, number of employees, budget, purchase timeline, email, and phone number.
-7. Understand buying intent and suggest a product demonstration when appropriate.
-8. If the customer wants to book a demo, offer these available slots: ${slotsText}.
+7. NEVER re-ask for any detail (name, company, employees, budget, email, phone) that the customer has ALREADY provided earlier in the conversation.
+8. Understand buying intent and suggest a product demonstration when appropriate.
+9. If the customer wants to book a demo, offer these available slots: ${slotsText}.
 
 COMPANY KNOWLEDGE BASE CONTEXT:
 ${contextBlock}`;
 
-  // Convert stored Redis history into Groq chat messages
-  const formattedHistory = history.slice(-12).map((item) => ({
+  // Convert stored Redis history into Groq chat messages (keep last 20 messages so earlier details aren't forgotten)
+  const formattedHistory = history.slice(-20).map((item) => ({
     role: item.role === 'customer' ? 'user' : 'assistant',
     content: item.text,
   }));
@@ -75,11 +153,10 @@ ${contextBlock}`;
     { role: 'user', content: message },
   ];
 
-  const completion = await groq.chat.completions.create({
-    model: DEFAULT_MODEL,
+  const completion = await createChatCompletionWithFallback(groq, {
     messages,
     temperature: 0.4,
-    max_tokens: 280,
+    max_tokens: 450,
   });
 
   return completion.choices[0]?.message?.content?.trim() || 'I am sorry, could you repeat that?';
@@ -113,11 +190,10 @@ Return ONLY valid JSON with these exact keys (use empty string "" if unknown):
 TRANSCRIPT:
 ${transcriptText}`;
 
-  const completion = await groq.chat.completions.create({
-    model: DEFAULT_MODEL,
+  const completion = await createChatCompletionWithFallback(groq, {
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.1,
-    max_tokens: 350,
+    max_tokens: 600,
   });
 
   const raw = completion.choices[0]?.message?.content || '{}';
@@ -229,11 +305,10 @@ async function summarizeCallTranscript(transcript = []) {
 TRANSCRIPT:
 ${transcriptText}`;
 
-  const completion = await groq.chat.completions.create({
-    model: DEFAULT_MODEL,
+  const completion = await createChatCompletionWithFallback(groq, {
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.2,
-    max_tokens: 450,
+    max_tokens: 700,
   });
 
   const raw = completion.choices[0]?.message?.content || '{}';
